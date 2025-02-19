@@ -1,0 +1,12 @@
+Tests: libsdl3-ttf-dev
+Restrictions: allow-stderr, superficial
+Depends:
+ build-essential,
+ cmake,
+ file,
+ fonts-cantarell,
+ libsdl3-ttf-dev,
+ ninja-build,
+ pkgconf,
+ xauth,
+ xvfb,

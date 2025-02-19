@@ -1,0 +1,3 @@
+usr/bin/glfont usr/libexec/installed-tests/SDL3_ttf
+usr/bin/showfont usr/libexec/installed-tests/SDL3_ttf
+usr/bin/testgputext usr/libexec/installed-tests/SDL3_ttf

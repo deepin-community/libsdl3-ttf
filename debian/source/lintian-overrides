@@ -1,0 +1,2 @@
+# A signing key exists, but we can't use it until there's a signed release
+debian-watch-could-verify-download debian/upstream/signing-key.asc [debian/watch]

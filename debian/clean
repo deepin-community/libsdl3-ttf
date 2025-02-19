@@ -1,0 +1,7 @@
+VERSION.txt
+examples/testgputext/shaders/*.dxil
+examples/testgputext/shaders/*.dxil.h
+examples/testgputext/shaders/*.msl
+examples/testgputext/shaders/*.msl.h
+examples/testgputext/shaders/*.spv
+examples/testgputext/shaders/*.spv.h
