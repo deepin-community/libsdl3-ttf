@@ -1,0 +1,12 @@
+/*.debhelper.log
+/*.substvars
+/.debhelper/
+/autoreconf.after
+/autoreconf.before
+/debhelper-build-stamp
+/files
+/libsdl3-ttf0/
+/libsdl3-ttf-dev/
+/libsdl3-ttf-doc/
+/libsdl3-ttf-tests/
+/tmp/

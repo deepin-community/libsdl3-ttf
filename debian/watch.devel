@@ -1,0 +1,12 @@
+version=4
+# Upstream releases official source tarballs, so we use
+# those in preference to git tags
+opts="\
+    compression=xz, \
+    dversionmangle=s/[+~](?:ds|dfsg)[0-9]*$//;s/\+(?:git)?[0-9]+(?:\+g[0-9a-f]*)?$//, \
+    downloadurlmangle=s#/tag/#/download/#;s#((?:prerelease|preview|release)-?@ANY_VERSION@)$#$1/SDL3_ttf-$2.tar.gz#, \
+    filenamemangle=s#(?:prerelease|preview|release)-?@ANY_VERSION@#SDL3_ttf-$1.tar.gz#, \
+    pgpmode=none, \
+    repack, \
+    repacksuffix=+ds" \
+https://github.com/libsdl-org/SDL_ttf/tags .*/releases/tag/(?:prerelease|preview|release)-?@ANY_VERSION@

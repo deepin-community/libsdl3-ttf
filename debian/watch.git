@@ -1,0 +1,20 @@
+version=4
+#opts="\
+#    compression=gzip, \
+#    dversionmangle=s/\+(?:git)?[0-9]*(?:\+g[0-9a-f]*)(?:\+(?:dfsg|ds)[0-9]*)//, \
+#    downloadurlmangle=s#/releases/tag/#/archive/refs/tags/#;s#((?:pre)?release-?@ANY_VERSION@)$#$1/SDL3_ttf-$2.tar.gz#, \
+#    filenamemangle=s#(?:pre)?release-?@ANY_VERSION@#SDL3_ttf-$1.tar.gz#" \
+#https://github.com/libsdl-org/SDL_ttf/tags .*/releases/tag/release-?@ANY_VERSION@
+
+# or:
+#opts="mode=git" \
+#https://github.com/libsdl-org/SDL_ttf \
+#refs/tags/release-@ANY_VERSION@
+
+opts="\
+    mode=git, \
+    compression=gzip, \
+    dversionmangle=s/\+(?:git)?[0-9]*(?:\+g[0-9a-f]*)(?:\+(?:dfsg|ds)[0-9]*)//, \
+    pretty=3~git%cd~%h+ds" \
+https://github.com/libsdl-org/SDL_ttf \
+HEAD

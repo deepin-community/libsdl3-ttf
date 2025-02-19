@@ -1,4 +1,49 @@
 #!/usr/bin/make -f
 
+#export DH_VERBOSE=1
+
+export DEB_BUILD_MAINT_OPTIONS := hardening=+all
+export DEB_CFLAGS_MAINT_APPEND  := -pipe -Wall
+
+include /usr/share/dpkg/default.mk
+
+built_binaries := $(shell dh_listpackages)
+
+confflags := -DSDLTTF_STRICT=ON
+
+confflags += -DSDLTTF_HARFBUZZ=ON
+confflags += -DSDLTTF_PLUTOSVG=OFF
+confflags += -DSDLTTF_VENDORED=OFF
+confflags += -DSDLTTF_WERROR=OFF
+
+ifneq ($(filter nocheck,$(DEB_BUILD_OPTIONS))$(filter %-tests,$(built_binaries)),nocheck)
+confflags += -DSDLTTF_TESTS=ON
+endif
+
+ifneq ($(filter %-tests,$(built_binaries)),)
+confflags += -DSDLTTF_SAMPLES=ON
+confflags += -DSDLTTF_SAMPLES_INSTALL=ON
+confflags += -DSDLTTF_TESTS_INSTALL=ON
+endif
+
+ifneq ($(filter %-doc,$(built_binaries)),)
+confflags += -DSDLTTF_INSTALL_MAN=ON
+endif
+
 %:
-	dh $@
+	dh $@ --buildsystem=cmake
+
+override_dh_auto_configure:
+	cd examples/testgputext/shaders && LC_ALL=C bash -ex $(CURDIR)/debian/build-shaders.sh
+	dh_auto_configure -- $(confflags)
+
+override_dh_installchangelogs:
+	dh_installchangelogs -- CHANGES.txt
+
+# debhelper >= 13.4 makes all of /usr/libexec executable, which is not
+# quite right for installed-tests
+override_dh_fixperms:
+	dh_fixperms -Xusr/libexec/installed-tests
+ifneq ($(filter %-tests,$(built_binaries)),)
+	chmod --recursive --changes a+rX,u+w,og-w debian/*-tests/usr/libexec/installed-tests
+endif
