@@ -36,7 +36,7 @@ if [ -z "${TEST_INTERACTIVE-}" ]; then
 	set -- xvfb-run -a -s '-screen 0 1280x1024x24 -noreset' "$@" --dump
 fi
 
-set -- "$@" /usr/share/fonts/opentype/cantarell/Cantarell-Regular.otf
+set -- "$@" /usr/share/fonts/opentype/freefont/FreeMono.otf
 
 "$@"
 

@@ -1,0 +1,25 @@
+From: Sam Lantinga <slouken@libsdl.org>
+Date: Wed, 2 Apr 2025 15:15:42 -0700
+Subject: Clarified that you should keep the IOStream opened until the font is
+ closed
+
+(cherry picked from commit c3af16390a8e4e7319e0b63d470136f38920f9b1)
+
+Origin: upstream, 3.2.4, commit:5cabeafaadebcb51d388309478b4ced7657e98f8
+---
+ include/SDL3_ttf/SDL_ttf.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/SDL3_ttf/SDL_ttf.h b/include/SDL3_ttf/SDL_ttf.h
+index a18eb09..cff028f 100644
+--- a/include/SDL3_ttf/SDL_ttf.h
++++ b/include/SDL3_ttf/SDL_ttf.h
+@@ -160,7 +160,7 @@ extern SDL_DECLSPEC TTF_Font * SDLCALL TTF_OpenFont(const char *file, float ptsi
+  * the last indexed size will be the default.
+  *
+  * If `closeio` is true, `src` will be automatically closed once the font is
+- * closed. Otherwise you should close `src` yourself after closing the font.
++ * closed. Otherwise you should keep `src` open until the font is closed.
+  *
+  * When done with the returned TTF_Font, use TTF_CloseFont() to dispose of it.
+  *

@@ -4,7 +4,7 @@ Depends:
  build-essential,
  cmake,
  file,
- fonts-cantarell,
+ fonts-freefont-otf,
  libsdl3-ttf-dev,
  ninja-build,
  pkgconf,

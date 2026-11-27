@@ -31,6 +31,7 @@
 #include FT_STROKER_H
 #include FT_GLYPH_H
 #include FT_TRUETYPE_IDS_H
+#include FT_TRUETYPE_TABLES_H
 #include FT_IMAGE_H
 
 /* Enable rendering with color
@@ -306,6 +307,7 @@ struct TTF_Font {
 
     // The font style
     TTF_FontStyleFlags style;
+    int weight;
     int outline;
     FT_Stroker stroker;
 
@@ -346,7 +348,7 @@ struct TTF_Font {
     hb_font_t *hb_font;
     hb_language_t hb_language;
 #endif
-    Uint32 script;
+    Uint32 script; // ISO 15924 script tag
     TTF_Direction direction;
     bool render_sdf;
 
@@ -378,6 +380,7 @@ static struct
 {
     SDL_InitState init;
     SDL_AtomicInt refcount;
+    SDL_AtomicInt generation;
     SDL_Mutex *lock;
     FT_Library library;
 } TTF_state;
@@ -408,6 +411,15 @@ typedef enum {
 #define NO_MEASUREMENT  \
         false, 0, NULL, NULL
 
+
+static Uint32 TTF_GetNextFontGeneration(void)
+{
+    Uint32 id = (Uint32)SDL_AtomicIncRef(&TTF_state.generation) + 1;
+    if (id == 0) {
+        id = (Uint32)SDL_AtomicIncRef(&TTF_state.generation) + 1;
+    }
+    return id;
+}
 
 static bool Find_GlyphByIndex(TTF_Font *font, FT_UInt idx, int want_bitmap, int want_pixmap, int want_color, int want_lcd, int want_subpixel, int translation, c_glyph **out_glyph, TTF_Image **out_image);
 
@@ -542,51 +554,6 @@ static void BG_Blended_LCD(const TTF_Image *image, Uint32 *destination, Sint32 s
     }
 
 }
-
-#if TTF_USE_SDF
-
-// Blended Opaque SDF
-static void BG_Blended_Opaque_SDF(const TTF_Image *image, Uint32 *destination, Sint32 srcskip, Uint32 dstskip)
-{
-    const Uint8 *src    = image->buffer;
-    Uint32      *dst    = destination;
-    Uint32       width  = image->width;
-    Uint32       height = image->rows;
-
-    while (height--) {
-        /* *INDENT-OFF* */
-        DUFFS_LOOP4(
-            *dst++ = ((Uint32)*src++) << 24;
-        , width);
-        /* *INDENT-ON* */
-        src += srcskip;
-        dst  = (Uint32 *)((Uint8 *)dst + dstskip);
-    }
-}
-
-// Blended non-opaque SDF
-// Note: This doesn't make sense when we're outputting raw SDF values.
-//       We'll just copy the alpha channel as-is for now.
-static void BG_Blended_SDF(const TTF_Image *image, Uint32 *destination, Sint32 srcskip, Uint32 dstskip, Uint8 fg_alpha)
-{
-    const Uint8 *src    = image->buffer;
-    Uint32      *dst    = destination;
-    Uint32       width  = image->width;
-    Uint32       height = image->rows;
-
-    (void)fg_alpha;
-    while (height--) {
-        /* *INDENT-OFF* */
-        DUFFS_LOOP4(
-            *dst++ = ((Uint32)*src++) << 24;
-        , width);
-        /* *INDENT-ON* */
-        src += srcskip;
-        dst  = (Uint32 *)((Uint8 *)dst + dstskip);
-    }
-}
-
-#endif // TTF_USE_SDF
 
 // Blended Opaque
 static void BG_Blended_Opaque(const TTF_Image *image, Uint32 *destination, Sint32 srcskip, Uint32 dstskip)
@@ -1375,18 +1342,6 @@ BUILD_RENDER_LINE(8_LCD_SP              , 0, 0, 1,    LCD, SUBPIX,              
 #endif
 
 
-#if TTF_USE_SDF
-static int (*Render_Line_SDF_Shaded)(TTF_Font *font, SDL_Surface *textbuf, int xstart, int ystart, SDL_Color *fg) = NULL;
-BUILD_RENDER_LINE(SDF_Blended           , 1, 0, 0,  COLOR, 0     ,                       , BG_Blended_SDF ,            )
-BUILD_RENDER_LINE(SDF_Blended_Opaque    , 1, 1, 0,  COLOR, 0     , BG_Blended_Opaque_SDF ,                ,            )
-static int (*Render_Line_SDF_Solid)(TTF_Font *font, SDL_Surface *textbuf, int xstart, int ystart, SDL_Color *fg) = NULL;
-static int (*Render_Line_SDF_Shaded_SP)(TTF_Font *font, SDL_Surface *textbuf, int xstart, int ystart, SDL_Color *fg) = NULL;
-BUILD_RENDER_LINE(SDF_Blended_SP        , 1, 0, 0,  COLOR, SUBPIX,                       , BG_Blended_SDF ,            )
-BUILD_RENDER_LINE(SDF_Blended_Opaque_SP , 1, 1, 0,  COLOR, SUBPIX, BG_Blended_Opaque_SDF ,                ,            )
-static int (*Render_Line_SDF_LCD)(TTF_Font *font, SDL_Surface *textbuf, int xstart, int ystart, SDL_Color *fg) = NULL;
-static int (*Render_Line_SDF_LCD_SP)(TTF_Font *font, SDL_Surface *textbuf, int xstart, int ystart, SDL_Color *fg) = NULL;
-#endif
-
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
@@ -1429,12 +1384,6 @@ static bool Render_Line(const render_mode_t render_mode, int subpixel, TTF_Font 
         } else {                                                                                            \
             return Render_Line_##NAME##_Solid(font, textbuf, xstart, ystart, NULL);                         \
         }
-
-#if TTF_USE_SDF
-    if (font->render_sdf && render_mode == RENDER_BLENDED) {
-        Call_Specific_Render_Line(SDF)
-    }
-#endif
 
 #if defined(HAVE_NEON_INTRINSICS)
     if (hasNEON()) {
@@ -1521,8 +1470,8 @@ static bool Render_Line_TextEngine(TTF_Font *font, TTF_Direction direction, int 
             op->copy.glyph_index = idx;
             op->copy.src.x = glyph_x;
             op->copy.src.y = glyph_y;
-            op->copy.src.w = glyph_width;
-            op->copy.src.h = glyph_rows;
+            op->copy.src.w = glyph_width + 2 * font->outline;
+            op->copy.src.h = glyph_rows + 2 * font->outline;
             op->copy.dst.x = x;
             op->copy.dst.y = y;
             op->copy.dst.w = op->copy.src.w;
@@ -1535,7 +1484,7 @@ static bool Render_Line_TextEngine(TTF_Font *font, TTF_Direction direction, int 
             }
         } else {
             // Use the distance to the next glyph as our bounds width
-            glyph_width = FT_FLOOR(pos->x_advance);
+            glyph_width = FT_FLOOR(pos->x_advance) + 2 * font->outline;
         }
 
         bounds.x = x;
@@ -2056,7 +2005,7 @@ TTF_Font *TTF_OpenFontWithProperties(SDL_PropertiesID props)
     font->src = src;
     font->src_offset = src_offset;
     font->closeio = closeio;
-    font->generation = 1;
+    font->generation = TTF_GetNextFontGeneration();
 
     if (existing_font) {
         if (existing_font->name) {
@@ -2100,19 +2049,19 @@ TTF_Font *TTF_OpenFontWithProperties(SDL_PropertiesID props)
         vdpi = TTF_DEFAULT_DPI;
     }
 
-    font->text = SDL_CreateHashTable(NULL, 16, SDL_HashPointer, SDL_KeyMatchPointer, NULL, false, false);
+    font->text = SDL_CreateHashTable(0, false, SDL_HashPointer, SDL_KeyMatchPointer, NULL, NULL);
     if (!font->text) {
         TTF_CloseFont(font);
         return NULL;
     }
 
-    font->glyphs = SDL_CreateHashTable(NULL, 32, SDL_HashID, SDL_KeyMatchID, SDL_NukeFreeValue, false, false);
+    font->glyphs = SDL_CreateHashTable(128, false, SDL_HashID, SDL_KeyMatchID, SDL_DestroyHashValue, NULL);
     if (!font->glyphs) {
         TTF_CloseFont(font);
         return NULL;
     }
 
-    font->glyph_indices = SDL_CreateHashTable(NULL, 32, SDL_HashID, SDL_KeyMatchID, NULL, false, false);
+    font->glyph_indices = SDL_CreateHashTable(128, false, SDL_HashID, SDL_KeyMatchID, NULL, NULL);
     if (!font->glyph_indices) {
         TTF_CloseFont(font);
         return NULL;
@@ -2182,6 +2131,7 @@ TTF_Font *TTF_OpenFontWithProperties(SDL_PropertiesID props)
     // Set the default font style
     if (existing_font) {
         font->style = existing_font->style;
+        font->weight = existing_font->weight;
         font->outline = existing_font->outline;
         font->ft_load_target = existing_font->ft_load_target;
         font->enable_kerning = existing_font->enable_kerning;
@@ -2190,6 +2140,16 @@ TTF_Font *TTF_OpenFontWithProperties(SDL_PropertiesID props)
         font->outline = 0;
         font->ft_load_target = FT_LOAD_TARGET_NORMAL;
         TTF_SetFontKerning(font, true);
+
+        // Retrieve the weight from the OS2 TrueType table
+        const TT_OS2 *os2_table = (const TT_OS2 *)FT_Get_Sfnt_Table(face, FT_SFNT_OS2);
+        if (os2_table != NULL && os2_table->usWeightClass != 0) {
+            font->weight = os2_table->usWeightClass;
+        } else if (face->style_flags & FT_STYLE_FLAG_BOLD) {
+            font->weight = TTF_FONT_WEIGHT_BOLD;
+        } else {
+            font->weight = TTF_FONT_WEIGHT_NORMAL;
+        }
     }
 
 #if TTF_USE_HARFBUZZ
@@ -2258,12 +2218,22 @@ TTF_Font *TTF_CopyFont(TTF_Font *existing_font)
 
 static bool AddFontTextReference(TTF_Font *font, TTF_Text *text)
 {
-    return SDL_InsertIntoHashTable(font->text, text, NULL);
+    return SDL_InsertIntoHashTable(font->text, text, NULL, true);
 }
 
 static bool RemoveFontTextReference(TTF_Font *font, TTF_Text *text)
 {
     return SDL_RemoveFromHashTable(font->text, text);
+}
+
+static bool SDLCALL UpdateFontTextCallback(void *userdata, const SDL_HashTable *table, const void *key, const void *value)
+{
+    TTF_Text *text = (TTF_Text *)key;
+    (void)userdata;
+    (void)table;
+    (void)value;
+    text->internal->needs_layout_update = true;
+    return true;
 }
 
 static void UpdateFontText(TTF_Font *font, TTF_Font *initial_font)
@@ -2276,11 +2246,7 @@ static void UpdateFontText(TTF_Font *font, TTF_Font *initial_font)
     }
 
     if (font->text) {
-        TTF_Text *text = NULL;
-        void *iter = NULL;
-        while (SDL_IterateHashTable(font->text, (const void **)&text, NULL, &iter)) {
-            text->internal->needs_layout_update = true;
-        }
+        SDL_IterateHashTable(font->text, UpdateFontTextCallback, NULL);
     }
 
     for (TTF_FontList *list = font->fallback_for; list; list = list->next) {
@@ -2476,15 +2442,21 @@ static void Flush_Glyph(c_glyph *glyph)
     Flush_Glyph_Image(&glyph->bitmap);
 }
 
+static bool SDLCALL FlushCacheCallback(void *userdata, const SDL_HashTable *table, const void *key, const void *value)
+{
+    c_glyph *glyph = (c_glyph *)value;
+    (void)userdata;
+    (void)table;
+    (void)key;
+    if (glyph->stored) {
+        Flush_Glyph(glyph);
+    }
+    return true;
+}
+
 static void Flush_Cache(TTF_Font *font)
 {
-    c_glyph *glyph = NULL;
-    void *iter = NULL;
-    while (SDL_IterateHashTable(font->glyphs, NULL, (const void **)&glyph, &iter)) {
-        if (glyph->stored) {
-            Flush_Glyph(glyph);
-        }
-    }
+    SDL_IterateHashTable(font->glyphs, FlushCacheCallback, NULL);
 
     for (unsigned int i = 0; i < SDL_arraysize(font->cached_positions); ++i) {
         CachedGlyphPositions *cached = &font->cached_positions[i];
@@ -2502,10 +2474,7 @@ static void Flush_Cache(TTF_Font *font)
     }
     font->positions = NULL;
 
-    ++font->generation;
-    if (font->generation == 0) {
-        ++font->generation;
-    }
+    font->generation = TTF_GetNextFontGeneration();
 }
 
 static bool Load_Glyph(TTF_Font *font, c_glyph *cached, int want, int translation)
@@ -3050,7 +3019,7 @@ static bool Find_GlyphByIndex(TTF_Font *font, FT_UInt idx,
         }
         glyph->index = idx;
 
-        if (!SDL_InsertIntoHashTable(font->glyphs, (const void *)(uintptr_t)idx, (const void *)glyph)) {
+        if (!SDL_InsertIntoHashTable(font->glyphs, (const void *)(uintptr_t)idx, (const void *)glyph, true)) {
             SDL_free(glyph);
             return false;
         }
@@ -3133,7 +3102,7 @@ static FT_UInt get_char_index(TTF_Font *font, Uint32 ch)
     const void *value;
     if (!SDL_FindInHashTable(font->glyph_indices, (const void *)(uintptr_t)ch, &value)) {
         idx = FT_Get_Char_Index(font->face, ch);
-        SDL_InsertIntoHashTable(font->glyph_indices, (const void *)(uintptr_t)ch, (const void *)(uintptr_t)idx);
+        SDL_InsertIntoHashTable(font->glyph_indices, (const void *)(uintptr_t)ch, (const void *)(uintptr_t)idx, true);
     } else {
         idx = (FT_UInt)(uintptr_t)value;
     }
@@ -3352,7 +3321,7 @@ static bool CollectGlyphsFromFont(TTF_Font *font, const char *text, size_t lengt
     // Set global configuration
     hb_buffer_set_language(hb_buffer, font->hb_language);
     hb_buffer_set_direction(hb_buffer, (hb_direction_t)direction);
-    hb_buffer_set_script(hb_buffer, script);
+    hb_buffer_set_script(hb_buffer, hb_script_from_iso15924_tag(script));
 
     // Layout the text
     hb_buffer_add_utf8(hb_buffer, text, (int)length, 0, -1);
@@ -3856,9 +3825,6 @@ static bool TTF_Size_Internal(TTF_Font *font, const char *text, size_t length, T
     if (ystart) {
         *ystart = (miny < 0) ? -miny : 0;
         *ystart += font->outline;
-        if (font->render_sdf && include_spread) {
-            *ystart += DEFAULT_SDF_SPREAD;
-        }
     }
 
     // Fill the bounds rectangle
@@ -3871,6 +3837,9 @@ static bool TTF_Size_Internal(TTF_Font *font, const char *text, size_t length, T
     if (h) {
         *h = (maxy - miny);
         *h += 2 * font->outline;
+        if (font->render_sdf && include_spread) {
+            *h += (2 * DEFAULT_SDF_SPREAD);
+        }
     }
     return true;
 }
@@ -4177,7 +4146,7 @@ static bool GetWrappedLines(TTF_Font *font, const char *text, size_t length, TTF
             // The line doesn't include any delimiter that caused it to be wrapped.
             if (CharacterIsNewLine(line->text[line->length - 1])) {
                 --line->length;
-                if (line->text[line->length - 1] == '\r') {
+                if (line->length > 0 && line->text[line->length - 1] == '\r') {
                     --line->length;
                 }
             } else if (i < (numLines - 1) &&
@@ -4265,16 +4234,6 @@ static SDL_Surface* TTF_Render_Wrapped_Internal(TTF_Font *font, const char *text
         SDL_SetError("LCD rendering is not available for non-scalable font");
         goto failure;
     }
-
-#if TTF_USE_SDF
-    // Invalid cache if we were using SDF
-    if (render_mode != RENDER_BLENDED) {
-        if (font->render_sdf) {
-            font->render_sdf = false;
-            Flush_Cache(font);
-        }
-    }
-#endif
 
     // Create surface for rendering
     if (fg.a == SDL_ALPHA_TRANSPARENT) {
@@ -4369,7 +4328,7 @@ SDL_Surface* TTF_RenderText_LCD_Wrapped(TTF_Font *font, const char *text, size_t
 struct TTF_TextLayout
 {
     TTF_Direction direction;
-    Uint32 script;
+    Uint32 script; // ISO 15924 script tag
     int font_height;
     int wrap_length;
     bool wrap_whitespace_visible;
@@ -4815,7 +4774,7 @@ Uint32 TTF_GetTextScript(TTF_Text *text)
 {
     TTF_CHECK_POINTER("text", text, 0);
 
-    if (text->internal->layout->script != 0) {
+    if (text->internal->layout->script) {
         return text->internal->layout->script;
     }
     return TTF_GetFontScript(text->internal->font);
@@ -5809,7 +5768,7 @@ void TTF_SetFontHinting(TTF_Font *font, TTF_HintingFlags hinting)
 
 TTF_HintingFlags TTF_GetFontHinting(const TTF_Font *font)
 {
-    TTF_CHECK_FONT(font, -1);
+    TTF_CHECK_FONT(font, TTF_HINTING_INVALID);
 
     if (font->ft_load_target == FT_LOAD_TARGET_LIGHT) {
         if (font->render_subpixel == 0) {
@@ -5846,6 +5805,13 @@ bool TTF_GetFontSDF(const TTF_Font *font)
     TTF_CHECK_FONT(font, false);
 
     return font->render_sdf;
+}
+
+int TTF_GetFontWeight(const TTF_Font *font)
+{
+    TTF_CHECK_FONT(font, -1);
+
+    return font->weight;
 }
 
 void TTF_SetFontWrapAlignment(TTF_Font *font, TTF_HorizontalAlignment align)
@@ -6001,6 +5967,38 @@ TTF_Direction TTF_GetFontDirection(TTF_Font *font)
     return font->direction;
 }
 
+Uint32 TTF_StringToTag(const char *string)
+{
+    Uint8 bytes[4] = { 0, 0, 0, 0 };
+
+    if (string) {
+        for (size_t i = 0; i < 4 && string[i]; ++i) {
+            bytes[i] = (Uint8)string[i];
+        }
+    }
+
+    Uint32 tag = ((Uint32)bytes[0] << 24) |
+                 ((Uint32)bytes[1] << 16) |
+                 ((Uint32)bytes[2] <<  8) |
+                 ((Uint32)bytes[3] <<  0);
+    return tag;
+}
+
+void TTF_TagToString(Uint32 tag, char *string, size_t size)
+{
+    if (!string || !size) {
+        return;
+    }
+
+    for (size_t i = 0; i < 4 && i < size; ++i) {
+        string[i] = (char)(Uint8)(tag >> 24);
+        tag <<= 8;
+    }
+    if (size > 4) {
+        string[4] = '\0';
+    }
+}
+
 bool TTF_SetFontScript(TTF_Font *font, Uint32 script)
 {
     TTF_CHECK_FONT(font, false);
@@ -6045,10 +6043,7 @@ Uint32 TTF_GetGlyphScript(Uint32 ch)
     hb_buffer_clear_contents(hb_buffer);
     hb_buffer_set_content_type(hb_buffer, HB_BUFFER_CONTENT_TYPE_UNICODE);
 
-    script = hb_unicode_script(hb_unicode_functions, ch);
-    if (script == HB_SCRIPT_UNKNOWN) {
-        script = 0;
-    }
+    script = hb_script_to_iso15924_tag(hb_unicode_script(hb_unicode_functions, ch));
 
     hb_buffer_destroy(hb_buffer);
 #else
@@ -6086,6 +6081,20 @@ bool TTF_SetFontLanguage(TTF_Font *font, const char *language_bcp47)
 #endif
 }
 
+static bool RemoveOneTextCallback(void *userdata, const SDL_HashTable *table, const void *key, const void *value)
+{
+    TTF_Font *font = (TTF_Font *)userdata;
+    TTF_Text *text = (TTF_Text *)key;
+    (void)table;
+    (void)value;
+    if (text->internal->font == font) {
+        TTF_SetTextFont(text, NULL);
+    } else {
+        RemoveFontTextReference(font, text);
+    }
+    return false;
+}
+
 void TTF_CloseFont(TTF_Font *font)
 {
     if (!font) {
@@ -6094,15 +6103,7 @@ void TTF_CloseFont(TTF_Font *font)
 
     if (font->text) {
         while (!SDL_HashTableEmpty(font->text)) {
-            TTF_Text *text = NULL;
-            void *iter = NULL;
-            if (!SDL_IterateHashTable(font->text, (const void **)&text, NULL, &iter)) {
-                break;
-            }
-            if (text && text->internal->font == font) {
-                TTF_SetTextFont(text, NULL);
-            }
-            SDL_RemoveFromHashTable(font->text, text);
+            SDL_IterateHashTable(font->text, RemoveOneTextCallback, font);
         }
         SDL_DestroyHashTable(font->text);
         font->text = NULL;

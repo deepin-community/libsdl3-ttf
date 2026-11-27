@@ -8,9 +8,9 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 
 # See docs/release_checklist.md
 set(MAJOR_VERSION 3)
-set(MINOR_VERSION 1)
-set(MICRO_VERSION 0)
-set(SDL_REQUIRED_VERSION 3.1.5)
+set(MINOR_VERSION 2)
+set(MICRO_VERSION 2)
+set(SDL_REQUIRED_VERSION 3.2.6)
 
 project(SDL3_ttf
     LANGUAGES C
@@ -242,15 +242,35 @@ if(SDLTTF_HARFBUZZ)
     set(harfbuzz_include_directories)
     if(SDLTTF_HARFBUZZ_VENDORED)
         message(STATUS "${PROJECT_NAME}: Using vendored harfbuzz library")
+        # HB_BUILD_SUBSET variable is used by harfbuzz
+        set(HB_BUILD_SUBSET OFF CACHE BOOL "build harfbuzz-subset" FORCE)
         # HB_BUILD_UTILS variable is used by harfbuzz
         set(HB_BUILD_UTILS OFF CACHE BOOL "harfbuzz build utils" FORCE)
         # SKIP_INSTALL_LIBRARIES variable is used by harfbuzz
         set(SKIP_INSTALL_LIBRARIES ON CACHE BOOL "harfbuzz install option" FORCE)
         # HB_HAVE_FREETYPE variable is used by harfbuzz
         set(HB_HAVE_FREETYPE ${SDLTTF_FREETYPE} CACHE BOOL "harfbuzz freetype helpers" FORCE)
+        # target-specific harfbuzz backends :
+        if(APPLE)
+            # Minimum version for $<LINK_LIBRARY:feature,library-list>
+            cmake_minimum_required(VERSION 3.24)
+            # HB_HAVE_CORETEXT variable is used by harfbuzz
+            set(HB_HAVE_CORETEXT ON CACHE BOOL "harfbuzz coretext backend" FORCE)
+        endif()
+        if(WIN32)
+            # HB_HAVE_UNISCRIBE variable is used by harfbuzz
+            set(HB_HAVE_UNISCRIBE ON CACHE BOOL "harfbuzz uniscribe backend" FORCE)
+            # HB_HAVE_GDI variable is used by harfbuzz
+            set(HB_HAVE_GDI ON CACHE BOOL "harfbuzz windows backend" FORCE)
+        endif()
+        ## HACK: HACK: These fail detection, we rely on our own vendored FreeType having them ##
+        set(HAVE_FT_GET_VAR_BLEND_COORDINATES 1 CACHE BOOL "FT_Get_Var_Blend_Coordinates" FORCE)
+        set(HAVE_FT_SET_VAR_BLEND_COORDINATES 1 CACHE BOOL "FT_Set_Var_Blend_Coordinates" FORCE)
+        set(HAVE_FT_DONE_MM_VAR 1 CACHE BOOL "FT_Done_MM_Var" FORCE)
+        set(HAVE_FT_GET_TRANSFORM 1 CACHE BOOL "FT_Get_Transform" FORCE)
         sdl_check_project_in_subfolder(external/harfbuzz harfbuzz SDLTTF_VENDORED)
         add_subdirectory(external/harfbuzz EXCLUDE_FROM_ALL)
-        # harfbuzz is a c++ project, enable c++ here to ensure linking to the c++ standard library
+        # harfbuzz is a c++ project, enable c++ here to ensure linking to the c++ standard library.
         enable_language(CXX)
         if(NOT TARGET harfbuzz::harfbuzz)
             add_library(harfbuzz::harfbuzz ALIAS harfbuzz)
@@ -261,9 +281,21 @@ if(SDLTTF_HARFBUZZ)
         else()
             set(harfbuzz_sources $<TARGET_OBJECTS:harfbuzz::harfbuzz>)
             set(harfbuzz_include_directories $<TARGET_PROPERTY:harfbuzz::harfbuzz,INTERFACE_INCLUDE_DIRECTORIES>)
-            if(NOT MSVC)
+            if(WIN32)
+                # for uniscribe and gdi backends :
+                list(APPEND harfbuzz_link_libraries usp10 gdi32 rpcrt4)
+                list(APPEND PC_LIBS -lusp10 -lgdi32 -lrpcrt4)
+            elseif(APPLE)
+                # for coretext backend :
+                list(APPEND harfbuzz_link_libraries "$<LINK_LIBRARY:FRAMEWORK,CoreText>")
+                list(APPEND harfbuzz_link_libraries "$<LINK_LIBRARY:FRAMEWORK,CoreGraphics>")
+                list(APPEND harfbuzz_link_libraries "$<LINK_LIBRARY:FRAMEWORK,CoreFoundation>")
+                list(APPEND PC_LIBS "-Wl,-framework,CoreText")
+                list(APPEND PC_LIBS "-Wl,-framework,CoreGraphics")
+                list(APPEND PC_LIBS "-Wl,-framework,CoreFoundation")
+            else()
                 find_package(Threads)
-                set(harfbuzz_link_librarise Threads::Threads)
+                set(harfbuzz_link_libraries Threads::Threads)
             endif()
         endif()
     else()
@@ -334,6 +366,7 @@ endif()
 list(APPEND SDLTTF_BACKENDS PLUTOSVG)
 set(SDLTTF_PLUTOSVG_ENABLED FALSE)
 if(SDLTTF_PLUTOSVG)
+    set(plutosvg_compile_definitions)
     set(plutosvg_include_directories)
     set(plutosvg_link_libraries)
     set(plutosvg_sources)
@@ -341,7 +374,8 @@ if(SDLTTF_PLUTOSVG)
         message(STATUS "${PROJECT_NAME}: Using vendored plutosvg library")
         set(BUILD_SHARED_LIBS OFF)
         set(PLUTOSVG_ENABLE_FREETYPE ON CACHE BOOL "plutosvg enable freetype" FORCE)
-        set(PLUTOVG_BUILD_EXAMPLES OFF CACHE BOOL "plutosvg build examples" FORCE)
+        set(PLUTOSVG_BUILD_EXAMPLES OFF CACHE BOOL "plutosvg build examples" FORCE)
+        set(PLUTOVG_BUILD_EXAMPLES OFF CACHE BOOL "plutovg build examples" FORCE)
         sdl_check_project_in_subfolder(external/plutovg plutovg SDLTTF_VENDORED)
         add_subdirectory(external/plutovg EXCLUDE_FROM_ALL)
         sdl_check_project_in_subfolder(external/plutosvg plutosvg SDLTTF_VENDORED)
@@ -350,7 +384,12 @@ if(SDLTTF_PLUTOSVG)
         if(SDLTTF_BUILD_SHARED_LIBS)
             set(plutosvg_link_libraries plutosvg::plutosvg)
         else()
-            set(plutosvg_include_directories $<TARGET_PROPERTY:plutosvg::plutosvg,INTERFACE_INCLUDE_DIRECTORIES>)
+            set(plutosvg_compile_definitions
+                $<TARGET_PROPERTY:plutovg::plutovg,INTERFACE_COMPILE_DEFINITIONS>
+                $<TARGET_PROPERTY:plutosvg::plutosvg,INTERFACE_COMPILE_DEFINITIONS>)
+            set(plutosvg_include_directories
+                $<TARGET_PROPERTY:plutovg::plutovg,INTERFACE_INCLUDE_DIRECTORIES>
+                $<TARGET_PROPERTY:plutosvg::plutosvg,INTERFACE_INCLUDE_DIRECTORIES>)
             set(plutosvg_sources $<TARGET_OBJECTS:plutosvg> $<TARGET_OBJECTS:plutovg>)
         endif()
     else()
@@ -367,6 +406,7 @@ if(SDLTTF_PLUTOSVG)
     if(SDLTTF_PLUTOSVG_ENABLED)
         target_compile_definitions(${sdl3_ttf_target_name} PRIVATE TTF_USE_PLUTOSVG=1)
         target_sources(${sdl3_ttf_target_name} PRIVATE ${plutosvg_sources})
+        target_compile_definitions(${sdl3_ttf_target_name} PRIVATE ${plutosvg_compile_definitions})
         target_include_directories(${sdl3_ttf_target_name} PRIVATE ${plutosvg_include_directories})
         target_link_libraries(${sdl3_ttf_target_name} PRIVATE ${plutosvg_link_libraries})
     endif()
@@ -414,6 +454,7 @@ if(SDLTTF_INSTALL)
     endif()
 
     configure_package_config_file(cmake/SDL3_ttfConfig.cmake.in SDL3_ttfConfig.cmake
+        NO_SET_AND_CHECK_MACRO
         INSTALL_DESTINATION "${SDLTTF_INSTALL_CMAKEDIR}"
     )
     write_basic_package_version_file("${PROJECT_BINARY_DIR}/SDL3_ttfConfigVersion.cmake"
@@ -432,6 +473,7 @@ if(SDLTTF_INSTALL)
               cmake/PkgConfigHelper.cmake
               cmake/Findharfbuzz.cmake
               cmake/Findplutosvg.cmake
+              cmake/Findplutovg.cmake
           DESTINATION "${SDLTTF_INSTALL_CMAKEDIR}"
           COMPONENT devel
       )
@@ -443,12 +485,25 @@ if(SDLTTF_INSTALL)
         COMPONENT devel
     )
 
+    export(TARGETS ${sdl3_ttf_target_name} NAMESPACE "SDL3_ttf::" FILE "${sdl3_ttf_target_name}-targets.cmake")
+
     if(SDLTTF_RELOCATABLE)
       file(RELATIVE_PATH SDL_PATH_PREFIX_RELATIVE_TO_PKGCONFIG "${CMAKE_INSTALL_PREFIX}/${SDLTTF_PKGCONFIG_INSTALLDIR}" "${CMAKE_INSTALL_PREFIX}")
       string(REGEX REPLACE "[/]+$" "" SDL_PATH_PREFIX_RELATIVE_TO_PKGCONFIG "${SDL_PATH_PREFIX_RELATIVE_TO_PKGCONFIG}")
       set(SDL_PKGCONFIG_PREFIX "\${pcfiledir}/${SDL_PATH_PREFIX_RELATIVE_TO_PKGCONFIG}")
     else()
       set(SDL_PKGCONFIG_PREFIX "${CMAKE_INSTALL_PREFIX}")
+    endif()
+
+    if(IS_ABSOLUTE "${CMAKE_INSTALL_INCLUDEDIR}")
+      set(INCLUDEDIR_FOR_PKG_CONFIG "${CMAKE_INSTALL_INCLUDEDIR}")
+    else()
+      set(INCLUDEDIR_FOR_PKG_CONFIG "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
+    endif()
+    if(IS_ABSOLUTE "${CMAKE_INSTALL_LIBDIR}")
+      set(LIBDIR_FOR_PKG_CONFIG "${CMAKE_INSTALL_LIBDIR}")
+    else()
+      set(LIBDIR_FOR_PKG_CONFIG "\${prefix}/${CMAKE_INSTALL_LIBDIR}")
     endif()
 
     string(JOIN " " PC_REQUIRES ${PC_REQUIRES})
