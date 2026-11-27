@@ -1,0 +1,24 @@
+From: Sam Lantinga <slouken@libsdl.org>
+Date: Wed, 2 Apr 2025 10:42:04 -0700
+Subject: Updated the version that TTF_GetFontWeight() became available
+
+(cherry picked from commit 8a34a05a37306718105021cead41e23f40617022)
+
+Origin: upstream, 3.2.4, commit:358b4ed331ff54ed2fac7cfb7db9cc3634260915
+---
+ include/SDL3_ttf/SDL_ttf.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/SDL3_ttf/SDL_ttf.h b/include/SDL3_ttf/SDL_ttf.h
+index b723bc7..a18eb09 100644
+--- a/include/SDL3_ttf/SDL_ttf.h
++++ b/include/SDL3_ttf/SDL_ttf.h
+@@ -676,7 +676,7 @@ extern SDL_DECLSPEC bool SDLCALL TTF_GetFontSDF(const TTF_Font *font);
+  * \threadsafety This function should be called on the thread that created the
+  *               font.
+  *
+- * \since This function is available since SDL_ttf 3.4.0.
++ * \since This function is available since SDL_ttf 3.2.2.
+  */
+ extern SDL_DECLSPEC int SDLCALL TTF_GetFontWeight(const TTF_Font *font);
+ 

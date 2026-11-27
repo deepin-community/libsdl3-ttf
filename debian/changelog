@@ -1,3 +1,39 @@
+libsdl3-ttf (3.2.2+ds-1) unstable; urgency=medium
+
+  * New upstream stable release
+  * d/copyright: Update file exclusions
+  * d/libsdl3-ttf0.symbols: Update
+  * d/p/Updated-the-version-that-TTF_GetFontWeight-became-availab.patch,
+    d/p/Clarified-that-you-should-keep-the-IOStream-opened-until-.patch:
+    Add some post-release documentation fixes from upstream
+  * Standards-Version: 4.7.2 (no changes required)
+
+ -- Simon McVittie <smcv@debian.org>  Sun, 06 Apr 2025 14:51:58 +0100
+
+libsdl3-ttf (3.2.0+ds-1) unstable; urgency=medium
+
+  * First upstream stable release (Closes: #1095059)
+  * Depend on SDL 3.2.6 as per CMakeLists.txt
+  * d/libsdl3-ttf0.symbols: Bump version to 3.2.0 for all symbols.
+    Let's make sure all dependent packages that were compiled against
+    the stable release pick up a dependency on the stable release.
+
+ -- Simon McVittie <smcv@debian.org>  Mon, 03 Mar 2025 11:03:17 +0000
+
+libsdl3-ttf (3.1.2+ds-1) unstable; urgency=medium
+
+  [ Fabian Greffrath ]
+  * tests: switch from fonts-cantarell to fonts-freefont-otf
+
+  [ Simon McVittie ]
+  * New upstream preview release
+  * d/watch.git: Update
+  * d/libsdl3-ttf0.symbols: Update
+  * d/control: Require SDL 3.2.0 stable release
+  * d/control, d/copyright: Update upstream project URLs
+
+ -- Simon McVittie <smcv@debian.org>  Tue, 25 Feb 2025 16:46:56 +0000
+
 libsdl3-ttf (3.1.0+ds-1) unstable; urgency=medium
 
   * New upstream preview release

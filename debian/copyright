@@ -1,16 +1,14 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: SDL_ttf
 Upstream-Contact: Sam Lantinga <slouken@libsdl.org>
-Source: http://www.libsdl.org/projects/SDL_ttf/
+Source: https://github.com/libsdl-org/SDL_ttf/releases
 Files-Excluded:
  .github
  .gitmodules
  VisualC
  Xcode
  docs/hello.c
- examples/testgputext/shaders/*.dxil
  examples/testgputext/shaders/*.dxil.h
- examples/testgputext/shaders/*.msl
  examples/testgputext/shaders/*.msl.h
  external
 
